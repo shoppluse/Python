@@ -34,7 +34,6 @@ body::before{
 }
 .sub{font-size:0.62rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-top:8px;}
 
-/* Two-column dashboard layout for larger viewports */
 .workspace {
   display: flex;
   flex-direction: column;
@@ -66,7 +65,6 @@ body::before{
 .inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,255,136,0.1);}
 .inp::placeholder{color:var(--muted);}
 
-/* Image Dropzone Side panel styles */
 .upload-card {
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
   padding:22px;display:flex;flex-direction:column;gap:12px;
@@ -178,7 +176,6 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.3);}
   </div>
 
   <div class="workspace">
-    <!-- Batch Input Module -->
     <div class="input-card">
       <div>
         <div class="lbl">Enter up to 10 links / texts (one per row)</div>
@@ -221,13 +218,13 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.3);}
       <button class="gen-btn" id="genBtn">⬡ Generate All QR Codes</button>
     </div>
 
-    <!-- Image Converter Module (With Multi-Select Feature) -->
+    <!-- Image Converter Module (Crystal Clear Mode) -->
     <div class="upload-card">
       <div class="lbl">Image To URL Converter</div>
       <div class="dropzone" id="dropzone">
         <div class="dropzone-text" id="dropzoneText">⚡ Drop images here or click to upload</div>
-        <div class="dropzone-sub">Supports up to 10 images at once. Converts entirely offline instantly.</div>
-        <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple />
+        <div class="dropzone-sub">Crystal clear mode. Retains 100% original image details and quality.</div>
+        <input type="file" id="fileInput" accept="image/*" multiple />
       </div>
     </div>
   </div>
@@ -269,12 +266,12 @@ const genBtn=document.getElementById("genBtn"),results=document.getElementById("
 const qrGrid=document.getElementById("qrGrid"),resultsTitle=document.getElementById("resultsTitle");
 const dlAllBtn=document.getElementById("dlAllBtn"),emptyHint=document.getElementById("emptyHint");
 
-// Dropzone Selectors
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
 const dropzoneText = document.getElementById("dropzoneText");
 
 let generatedCanvases=[];
+let activeObjectUrls=[]; // Tracks generated storage links to prevent browser memory leaks
 
 function syncColor(w){
   const p=w==="fg"?fgPicker:bgPicker,s=w==="fg"?fgSwatch:bgSwatch,h=w==="fg"?fgHex:bgHex;
@@ -289,7 +286,7 @@ sizeSlider.addEventListener("input",()=>{sizeDisp.textContent=sizeSlider.value;s
 document.addEventListener("keydown",e=>{if(e.key==="Enter")generateAll();});
 
 /* --------------------------------------------------
-   BATCH IMAGE PROCESSOR (OFLINE CONVERSION ENGINE)
+   CRYSTAL CLEAR BATCH PROCESSOR (OBJECT BLOB ROUTER)
 -------------------------------------------------- */
 dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
 dropzone.addEventListener("dragleave", () => { dropzone.classList.remove("dragover"); });
@@ -302,84 +299,47 @@ fileInput.addEventListener("change", (e) => {
   if(e.target.files.length) handleBatchFiles(e.target.files);
 });
 
-async function handleBatchFiles(fileList) {
+function handleBatchFiles(fileList) {
   const files = Array.from(fileList).filter(file => file.type.startsWith("image/"));
   
   if (files.length === 0) {
-    alert("Please select valid image files (JPG, PNG, WEBP).");
+    alert("Please select valid image files.");
     return;
   }
   
   if (files.length > 10) {
-    alert("You can process up to 10 images at once. Only the first 10 will be loaded.");
+    alert("Maximum 10 images can be processed at once.");
     files.splice(10);
   }
 
-  dropzoneText.textContent = `⏳ Processing ${files.length} images...`;
+  // Clear previous allocations to free up system memory
+  activeObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  activeObjectUrls = [];
+
+  dropzoneText.textContent = `⚡ Linked ${files.length} images...`;
   
-  // Clear out all input values to prepare fresh rows matching the batch count perfectly
   const inputs = [...document.querySelectorAll(".qr-inp")];
   inputs.forEach(input => input.value = "");
 
-  // Sequentially convert all selected images into optimized offline data metrics
+  // Convert files directly to full-resolution local memory links
   for (let i = 0; i < files.length; i++) {
-    try {
-      const dataUrl = await fileToCompressedDataUrl(files[i]);
-      inputs[i].value = dataUrl;
-    } catch (err) {
-      console.error(`Error loading image index ${i}:`, err);
-    }
+    const blobUrl = URL.createObjectURL(files[i]);
+    activeObjectUrls.push(blobUrl);
+    inputs[i].value = blobUrl;
   }
 
-  dropzoneText.textContent = `✅ Embedded ${files.length} Images!`;
+  dropzoneText.textContent = `✅ Loaded ${files.length} HD Images!`;
   
-  // Enforce high error density optimization settings
-  ecLevel.value = "H";
+  // High-performance scanning settings setup
+  ecLevel.value = "M"; 
 
   setTimeout(() => {
     dropzoneText.textContent = "⚡ Drop images here or click to upload";
   }, 3000);
 }
 
-// Convert image object file cleanly to downscaled Base64 format asynchronously 
-function fileToCompressedDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-      const img = new Image();
-      img.onload = function() {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
-        // Keep data profile small to ensure barcodes remain easy to read
-        const maxDim = 110; 
-        let w = img.width;
-        let h = img.height;
-
-        if (w > h) {
-          if (w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
-        } else {
-          if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
-        }
-
-        canvas.width = w;
-        canvas.height = h;
-        ctx.drawImage(img, 0, 0, w, h);
-
-        // Highly dense 60% compressed string delivery structure
-        const resultUrl = canvas.toDataURL("image/jpeg", 0.6);
-        resolve(resultUrl);
-      };
-      img.onerror = () => reject(new Error("Image compilation failure"));
-      img.src = event.target.result;
-    };
-    reader.onerror = () => reject(new Error("File stream read failure"));
-    reader.readAsDataURL(file);
-  });
-}
-
 /* --------------------------------------------------
-   CORE GENERATION LOGIC
+   CORE QR GENERATOR
 -------------------------------------------------- */
 function renderQRToCanvas(text,size,fg,bg,ec){
   return new Promise((resolve,reject)=>{
@@ -424,8 +384,8 @@ async function generateAll(){
       const num=document.createElement("div");num.className="qr-num";num.textContent=`#${i+1}`;
       const lbl=document.createElement("div");lbl.className="qr-label";
       
-      if(texts[i].startsWith("data:image")) {
-        lbl.textContent = "[Forged Image Matrix Data]";
+      if(texts[i].startsWith("blob:")) {
+        lbl.textContent = "[Full Resolution HD Image]";
       } else {
         lbl.textContent=texts[i].length>38?texts[i].slice(0,38)+"…":texts[i];
       }
@@ -445,7 +405,7 @@ async function generateAll(){
     setTimeout(()=>results.scrollIntoView({behavior:"smooth",block:"nearest"}),100);
   }catch(err){
     console.error(err);
-    alert("Payload size too high. Try lowering your size slider option.");
+    alert("Generation error occurred. Try adjusting parameters.");
   }
   genBtn.disabled=false;genBtn.textContent="⬡ Generate All QR Codes";
 }
@@ -469,7 +429,7 @@ dlAllBtn.addEventListener("click",async()=>{
 });
 
 function fn(str){
-  if(str && str.startsWith("data:image")) return "image-payload";
+  if(str && str.startsWith("blob:")) return "hd-image-link";
   return(str||"qr").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,30);
 }
 </script>
